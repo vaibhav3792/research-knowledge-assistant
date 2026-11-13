@@ -27,3 +27,6 @@ Thumbs.db
 
 # Generated vector database
 data/chroma_db/
+
+# Raw research documents (keep local; do not commit PDFs)
+data/raw/*.pdf

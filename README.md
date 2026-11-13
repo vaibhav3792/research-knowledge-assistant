@@ -2,7 +2,7 @@
 
 An AI-powered document intelligence system built using **LangChain and Retrieval-Augmented Generation (RAG)**.
 
-The application will ingest research documents, retrieve relevant evidence, and generate grounded answers with document and page-level citations. It will also support research summarization, comparison, and evidence-based abstention.
+The application is designed to ingest research documents, retrieve relevant evidence, and generate grounded answers with document and page-level citations. Planned capabilities also include research summarization, comparison, and evidence-based abstention.
 
 ## Project Objectives
 
@@ -13,6 +13,7 @@ The application will ingest research documents, retrieve relevant evidence, and 
 - Summarize and compare research findings.
 - Abstain when retrieved evidence is insufficient.
 - Evaluate and optimize retrieval and generation independently.
+- Deploy a functional, accessible application.
 
 ## Architecture
 
@@ -24,7 +25,7 @@ Research Documents
        v
 Ingestion Pipeline
        |
-       +--> PDF Loading
+       +--> PDF / TXT Loading
        +--> Document Hashing
        +--> Duplicate Detection
        +--> Text Splitting
@@ -52,7 +53,7 @@ Generation Module
 Grounded Answer + Citations
 ```
 
-FastAPI will expose the application functionality through an API.
+FastAPI will expose application functionality through an API.
 
 Retrieval and generation will remain independently testable to support systematic evaluation and optimization.
 
@@ -67,10 +68,10 @@ Retrieval and generation will remain independently testable to support systemati
 | Embeddings | Sentence Transformers |
 | Initial embedding model | `BAAI/bge-small-en-v1.5` |
 | Vector database | ChromaDB |
-| Document processing | PyPDF |
+| Document processing | pypdf |
 | API | FastAPI |
-| Validation and configuration | Pydantic |
-| Testing | Pytest |
+| Configuration | Pydantic Settings |
+| Testing | pytest |
 
 ## Initial RAG Configuration
 
@@ -93,13 +94,23 @@ These settings will be evaluated and optimized using a retrieval evaluation data
 
 ## Document Identity and Metadata
 
-Documents will be identified using SHA-256 content hashes.
+Documents are identified using SHA-256 hashes of their original file contents.
 
-- Identical document contents will be detected and skipped.
-- Modified documents will receive different identities.
-- Document metadata will preserve filename, title, document identity, file hash, and source.
-- Chunk metadata will preserve document identity, chunk identity, original PDF page number, and chunk position.
-- Page numbers will use the original PDF's 1-based numbering.
+- Identical file contents receive the same document identity.
+- Modified file contents receive a different identity.
+- Duplicate detection currently uses an in-memory registry.
+- Document metadata preserves the source filename and source path.
+- PDF page metadata preserves the original 1-based page number.
+- The ingestion pipeline attaches the stable `document_id` to each loaded page.
+
+The planned chunk-level metadata includes:
+
+- `chunk_id`
+- `document_id`
+- `page_number`
+- `chunk_index`
+
+Persistent duplicate detection and indexing will be implemented alongside ChromaDB integration.
 
 ## Project Structure
 
@@ -107,13 +118,14 @@ Documents will be identified using SHA-256 content hashes.
 research-knowledge-assistant/
 ├── app/
 │   ├── core/          # Configuration and shared infrastructure
-│   ├── ingestion/     # Document loading, processing and indexing
+│   ├── ingestion/     # Document loading and ingestion
 │   ├── retrieval/     # Evidence retrieval
 │   ├── generation/    # Prompts and grounded generation
 │   ├── schemas/       # Pydantic models
 │   └── api/           # FastAPI application and routes
 ├── data/
-│   ├── documents/     # Source research documents
+│   ├── raw/           # Local source research documents
+│   ├── documents/     # Processed document storage
 │   └── chroma_db/     # Persistent vector storage
 ├── tests/
 │   ├── unit/
@@ -123,6 +135,8 @@ research-knowledge-assistant/
 ├── README.md
 └── requirements.txt
 ```
+
+Raw research PDFs and generated vector database files are excluded from Git.
 
 ## Setup
 
@@ -142,7 +156,7 @@ python -m venv .venv
 
 ### 3. Install dependencies
 
-```bash
+```powershell
 python -m pip install -r requirements.txt
 ```
 
@@ -159,7 +173,7 @@ Never commit `.env` or expose API keys publicly.
 ### 5. Run tests
 
 ```powershell
-python -m pytest
+python -m pytest -v
 ```
 
 ## Configuration
@@ -184,27 +198,43 @@ Refer to `.env.example` for the complete configuration template.
 
 ## Development Roadmap
 
-1. **Stage 1 — Foundations and Architecture:** Project setup, dependencies, configuration, architecture and design decisions.
-2. **Stage 2 — Document Ingestion:** PDF loading, hashing, metadata extraction, splitting and indexing.
-3. **Stage 3 — Retrieval Engineering:** Semantic search, retrieval interfaces and independent evaluation.
-4. **Stage 4 — Grounded Generation:** Prompt engineering, Groq integration, citations and abstention.
-5. **Stage 5 — RAG Integration:** Connect ingestion, retrieval and generation into a complete pipeline.
-6. **Stage 6 — Evaluation and Optimization:** Retrieval metrics, answer quality, chunking experiments and retrieval improvements.
-7. **Stage 7 — API and Deployment:** FastAPI endpoints, testing, deployment and documentation.
+1. **Stage 1 — Foundations and Architecture:** Project setup, dependencies, configuration, architecture, and design decisions. Completed.
+2. **Stage 2 — Document Ingestion:** PDF and TXT loading, document hashing, duplicate detection, metadata handling, and ingestion pipeline. Implementation completed; final verification and commit pending.
+3. **Stage 3 — Document Processing and Chunking:** Recursive character splitting, metadata propagation, stable chunk identities, and chunking tests.
+4. **Stage 4 — Embeddings and Vector Indexing:** Embedding integration, persistent ChromaDB, indexing, and duplicate-safe persistence.
+5. **Stage 5 — Retrieval Engineering:** Similarity search, metadata filtering, source tracking, and retrieval evaluation.
+6. **Stage 6 — RAG Generation:** Groq integration, prompt construction, context assembly, grounded answers, citations, and abstention.
+7. **Stage 7 — FastAPI Application:** Request and response schemas, endpoints, validation, error handling, and API tests.
+8. **Stage 8 — Evaluation and Optimization:** Retrieval metrics, answer quality, failure analysis, latency, and reliability improvements.
+9. **Stage 9 — Deployment:** Production configuration, deployment, environment secrets, persistent storage, and live verification.
 
 ## Project Status
 
-Currently completing Stage 1: Foundations and Architecture.
+**Current stage: Stage 2 — Document Ingestion**
 
-No document ingestion or RAG application logic has been implemented yet.
+Implemented:
+
+- PDF loading with page-level extraction.
+- TXT loading with UTF-8 validation.
+- File-type-based document loader.
+- SHA-256 document identity.
+- In-memory duplicate registry.
+- Ingestion pipeline with document identity metadata.
+- Cached Sentence Transformers embedding model initialization.
+- Unit tests covering loaders, document identity, duplicate detection, and ingestion behavior.
+
+The current test suite has 38 passing tests.
+
+Chunking, persistent vector indexing, retrieval, generation, API development, and deployment remain future stages.
 
 ## Learning Focus
 
-This project is being developed as a hands-on AI Engineering exercise, focusing on:
+This project emphasizes practical AI Engineering skills:
 
 - Understanding RAG mechanisms and design trade-offs.
 - Building modular and testable LLM applications.
+- Designing reliable document ingestion pipelines.
 - Evaluating retrieval and generation independently.
-- Designing reliable evidence-grounded systems.
 - Experimenting with retrieval optimization.
-- Deploying a functional application.
+- Building evidence-grounded systems.
+- Deploying a functional AI application.
