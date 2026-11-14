@@ -121,3 +121,33 @@ def test_failed_loading_does_not_register_document(
     document_id = compute_file_hash(file_path)
 
     assert registry.is_registered(document_id) is False
+
+
+
+def test_failed_chunking_does_not_register_document(
+    tmp_path, monkeypatch
+):
+    import app.ingestion.pipeline as pipeline
+
+    from app.ingestion.document_identity import compute_file_hash
+
+    file_path = tmp_path / "research.txt"
+    file_path.write_text("Research content", encoding="utf-8")
+
+    registry = DocumentRegistry()
+
+    def mock_chunk_documents(documents):
+        raise RuntimeError("Simulated chunking failure")
+
+    monkeypatch.setattr(
+        pipeline,
+        "chunk_documents",
+        mock_chunk_documents,
+    )
+
+    with pytest.raises(RuntimeError, match="Simulated chunking failure"):
+        ingest_document(file_path, registry)
+
+    document_id = compute_file_hash(file_path)
+
+    assert registry.is_registered(document_id) is False

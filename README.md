@@ -1,3 +1,4 @@
+
 # Research & Knowledge Assistant
 
 An AI-powered document intelligence system built using **LangChain and Retrieval-Augmented Generation (RAG)**.
@@ -101,16 +102,42 @@ Documents are identified using SHA-256 hashes of their original file contents.
 - Duplicate detection currently uses an in-memory registry.
 - Document metadata preserves the source filename and source path.
 - PDF page metadata preserves the original 1-based page number.
-- The ingestion pipeline attaches the stable `document_id` to each loaded page.
+- The ingestion pipeline attaches the stable `document_id` before chunking.
 
-The planned chunk-level metadata includes:
+### Document Chunking
 
-- `chunk_id`
-- `document_id`
-- `page_number`
-- `chunk_index`
+Documents are split using LangChain's `RecursiveCharacterTextSplitter`.
 
-Persistent duplicate detection and indexing will be implemented alongside ChromaDB integration.
+- PDF pages are split independently to preserve page-level provenance.
+- TXT documents are split as a single source document.
+- Empty and whitespace-only documents are ignored during chunking.
+- Chunk size and overlap are configurable through application settings.
+- Each chunk retains its original source metadata.
+
+Initial chunking configuration:
+
+| Parameter | Value |
+|---|---|
+| Chunk size | 1,000 characters |
+| Chunk overlap | 200 characters |
+| Splitting strategy | Recursive character splitting |
+| Start index tracking | Enabled |
+
+### Chunk Metadata
+
+Each generated chunk preserves its original document metadata and adds:
+
+- `chunk_id`: Deterministic SHA-256 identifier for the chunk.
+- `document_id`: Identity of the original file.
+- `page_number`: Original 1-based PDF page number, when applicable.
+- `chunk_index`: Zero-based position of the chunk within its source document or PDF page.
+- `start_index`: Character position of the chunk within its original source content.
+
+Chunk identities are generated using the document identity, source segment, chunk index, and chunk content.
+
+The ingestion pipeline registers a document only after loading and chunking complete successfully.
+
+Persistent duplicate detection and vector indexing will be implemented alongside ChromaDB integration.
 
 ## Project Structure
 
@@ -118,7 +145,14 @@ Persistent duplicate detection and indexing will be implemented alongside Chroma
 research-knowledge-assistant/
 ├── app/
 │   ├── core/          # Configuration and shared infrastructure
-│   ├── ingestion/     # Document loading and ingestion
+│   ├── ingestion/     # Loading, document identity, chunking, and ingestion
+│   │   ├── chunker.py
+│   │   ├── document_identity.py
+│   │   ├── document_registry.py
+│   │   ├── loader.py
+│   │   ├── pdf_loader.py
+│   │   ├── pipeline.py
+│   │   └── txt_loader.py
 │   ├── retrieval/     # Evidence retrieval
 │   ├── generation/    # Prompts and grounded generation
 │   ├── schemas/       # Pydantic models
@@ -199,8 +233,8 @@ Refer to `.env.example` for the complete configuration template.
 ## Development Roadmap
 
 1. **Stage 1 — Foundations and Architecture:** Project setup, dependencies, configuration, architecture, and design decisions. Completed.
-2. **Stage 2 — Document Ingestion:** PDF and TXT loading, document hashing, duplicate detection, metadata handling, and ingestion pipeline. Implementation completed; final verification and commit pending.
-3. **Stage 3 — Document Processing and Chunking:** Recursive character splitting, metadata propagation, stable chunk identities, and chunking tests.
+2. **Stage 2 — Document Ingestion:** PDF and TXT loading, document hashing, duplicate detection, metadata handling, and ingestion pipeline. Completed.
+3. **Stage 3 — Document Processing and Chunking:** Recursive character splitting, metadata propagation, deterministic chunk identities, pipeline integration, and chunking tests. Implementation completed; final commit pending.
 4. **Stage 4 — Embeddings and Vector Indexing:** Embedding integration, persistent ChromaDB, indexing, and duplicate-safe persistence.
 5. **Stage 5 — Retrieval Engineering:** Similarity search, metadata filtering, source tracking, and retrieval evaluation.
 6. **Stage 6 — RAG Generation:** Groq integration, prompt construction, context assembly, grounded answers, citations, and abstention.
@@ -210,7 +244,7 @@ Refer to `.env.example` for the complete configuration template.
 
 ## Project Status
 
-**Current stage: Stage 2 — Document Ingestion**
+**Current stage: Stage 3 — Document Processing and Chunking**
 
 Implemented:
 
@@ -221,11 +255,19 @@ Implemented:
 - In-memory duplicate registry.
 - Ingestion pipeline with document identity metadata.
 - Cached Sentence Transformers embedding model initialization.
-- Unit tests covering loaders, document identity, duplicate detection, and ingestion behavior.
+- Recursive character-based document chunking.
+- PDF page-level provenance preservation.
+- Chunk metadata propagation.
+- Deterministic SHA-256 chunk identities.
+- Integration of chunking into the ingestion pipeline.
+- Registration only after successful loading and chunking.
+- Unit tests covering loaders, document identity, duplicate detection, chunking, and ingestion behavior.
 
-The current test suite has 38 passing tests.
+**Current test suite: 55 passing tests.**
 
-Chunking, persistent vector indexing, retrieval, generation, API development, and deployment remain future stages.
+Persistent vector indexing, retrieval, generation, API development, evaluation, and deployment remain future stages.
+
+The Stage 3 implementation is complete, pending its final Git commit and push.
 
 ## Learning Focus
 
