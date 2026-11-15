@@ -53,7 +53,7 @@ def chunk_documents(documents: list[Document]) -> list[Document]:
         for chunk_index, chunk in enumerate(chunks):
 
             # Preserve all original metadata.
-            metadata = dict(document.metadata)
+            metadata = dict(chunk.metadata)
 
             document_id = metadata.get("document_id", "")
             page_number = metadata.get("page_number")

@@ -263,3 +263,31 @@ def test_exact_chunk_size_document_produces_one_chunk():
 
     assert len(chunks) == 1
     assert len(chunks[0].page_content) == settings.chunk_size
+
+def test_chunk_start_index_is_preserved():
+    document = Document(
+        page_content="Research content for testing chunk offsets.",
+        metadata={"document_id": "doc-123"},
+    )
+
+    chunks = chunk_documents([document])
+
+    assert len(chunks) == 1
+    assert chunks[0].metadata["start_index"] == 0
+
+def test_multiple_chunks_preserve_start_indexes():
+    content = "A" * 2500
+    document = Document(
+        page_content=content,
+        metadata={"document_id": "doc-123"},
+    )
+
+    chunks = chunk_documents([document])
+
+    assert len(chunks) > 1
+    assert all("start_index" in chunk.metadata for chunk in chunks)
+    assert chunks[0].metadata["start_index"] == 0
+    assert all(
+        isinstance(chunk.metadata["start_index"], int)
+        for chunk in chunks
+    )

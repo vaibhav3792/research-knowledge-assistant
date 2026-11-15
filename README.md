@@ -1,4 +1,3 @@
-
 # Research & Knowledge Assistant
 
 An AI-powered document intelligence system built using **LangChain and Retrieval-Augmented Generation (RAG)**.
@@ -18,7 +17,7 @@ The application is designed to ingest research documents, retrieve relevant evid
 
 ## Architecture
 
-The system follows a modular architecture with separate ingestion, retrieval, and generation components.
+The system follows a modular architecture with separate ingestion, indexing, retrieval, and generation components.
 
 ```text
 Research Documents
@@ -33,7 +32,12 @@ Ingestion Pipeline
        +--> Metadata Preservation
        |
        v
-Embedding Model
+Document Chunks
+       |
+       v
+Indexing Module
+       |
+       +--> Embedding Model
        |
        v
 Persistent ChromaDB
@@ -137,33 +141,91 @@ Chunk identities are generated using the document identity, source segment, chun
 
 The ingestion pipeline registers a document only after loading and chunking complete successfully.
 
-Persistent duplicate detection and vector indexing will be implemented alongside ChromaDB integration.
+The document registry currently performs in-memory duplicate detection during ingestion.
+
+Persistent vector indexing is implemented separately through ChromaDB. Deterministic chunk IDs are used as vector database record IDs, allowing repeated indexing of the same chunks to update existing records instead of creating duplicates.
+
+The ingestion pipeline and vector indexing module remain separate at this stage. Their integration will be addressed in a later development stage.
+
+## Embeddings and Vector Indexing
+
+The project uses Sentence Transformers to generate local document embeddings.
+
+Initial embedding configuration:
+
+| Parameter | Value |
+|---|---|
+| Embedding model | `BAAI/bge-small-en-v1.5` |
+| Embedding dimensions | 384 |
+| Execution device | CPU |
+| Embedding normalization | Enabled |
+| Vector database | ChromaDB |
+| Collection name | `research_documents` |
+| Persistence | Local persistent storage |
+
+The embedding model is initialized through a cached shared instance to avoid repeatedly loading model weights.
+
+ChromaDB is configured with the shared embedding model and a persistent storage directory.
+
+### Indexing
+
+The indexing module accepts chunk-level LangChain Documents and:
+
+- Validates that every chunk has a valid `chunk_id`.
+- Rejects duplicate chunk IDs within an indexing batch.
+- Uses deterministic chunk IDs as ChromaDB record IDs.
+- Stores chunk content and metadata.
+- Supports updating existing records when the same chunk IDs are indexed again.
+- Propagates vector database errors to the caller.
+
+Integration tests verify storage, re-indexing behavior, and persistence after reopening the database.
+
+The vector database files are stored locally and excluded from Git.
 
 ## Project Structure
 
 ```text
 research-knowledge-assistant/
 ├── app/
-│   ├── core/          # Configuration and shared infrastructure
-│   ├── ingestion/     # Loading, document identity, chunking, and ingestion
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── embeddings.py
+│   │   └── vector_store.py
+│   │
+│   ├── ingestion/
 │   │   ├── chunker.py
 │   │   ├── document_identity.py
 │   │   ├── document_registry.py
+│   │   ├── indexer.py
 │   │   ├── loader.py
 │   │   ├── pdf_loader.py
 │   │   ├── pipeline.py
 │   │   └── txt_loader.py
+│   │
 │   ├── retrieval/     # Evidence retrieval
 │   ├── generation/    # Prompts and grounded generation
 │   ├── schemas/       # Pydantic models
 │   └── api/           # FastAPI application and routes
+│
 ├── data/
 │   ├── raw/           # Local source research documents
 │   ├── documents/     # Processed document storage
 │   └── chroma_db/     # Persistent vector storage
+│
 ├── tests/
 │   ├── unit/
+│   │   ├── test_chunker.py
+│   │   ├── test_document_identity.py
+│   │   ├── test_document_registry.py
+│   │   ├── test_indexer.py
+│   │   ├── test_ingestion_pipeline.py
+│   │   ├── test_loader.py
+│   │   ├── test_pdf_loader.py
+│   │   └── test_txt_loader.py
+│   │
 │   └── integration/
+│       └── test_vector_store.py
+│
 ├── .env.example
 ├── .gitignore
 ├── README.md
@@ -234,8 +296,8 @@ Refer to `.env.example` for the complete configuration template.
 
 1. **Stage 1 — Foundations and Architecture:** Project setup, dependencies, configuration, architecture, and design decisions. Completed.
 2. **Stage 2 — Document Ingestion:** PDF and TXT loading, document hashing, duplicate detection, metadata handling, and ingestion pipeline. Completed.
-3. **Stage 3 — Document Processing and Chunking:** Recursive character splitting, metadata propagation, deterministic chunk identities, pipeline integration, and chunking tests. Implementation completed; final commit pending.
-4. **Stage 4 — Embeddings and Vector Indexing:** Embedding integration, persistent ChromaDB, indexing, and duplicate-safe persistence.
+3. **Stage 3 — Document Processing and Chunking:** Recursive character splitting, metadata propagation, deterministic chunk identities, pipeline integration, and chunking tests. Completed.
+4. **Stage 4 — Embeddings and Vector Indexing:** Local embedding integration, persistent ChromaDB, deterministic chunk indexing, duplicate-safe upserts, and persistence tests. Implementation completed; final review and commit pending.
 5. **Stage 5 — Retrieval Engineering:** Similarity search, metadata filtering, source tracking, and retrieval evaluation.
 6. **Stage 6 — RAG Generation:** Groq integration, prompt construction, context assembly, grounded answers, citations, and abstention.
 7. **Stage 7 — FastAPI Application:** Request and response schemas, endpoints, validation, error handling, and API tests.
@@ -244,7 +306,7 @@ Refer to `.env.example` for the complete configuration template.
 
 ## Project Status
 
-**Current stage: Stage 3 — Document Processing and Chunking**
+**Current stage: Stage 4 — Embeddings and Vector Indexing**
 
 Implemented:
 
@@ -254,20 +316,26 @@ Implemented:
 - SHA-256 document identity.
 - In-memory duplicate registry.
 - Ingestion pipeline with document identity metadata.
-- Cached Sentence Transformers embedding model initialization.
 - Recursive character-based document chunking.
 - PDF page-level provenance preservation.
-- Chunk metadata propagation.
+- Chunk metadata propagation, including start index tracking.
 - Deterministic SHA-256 chunk identities.
 - Integration of chunking into the ingestion pipeline.
 - Registration only after successful loading and chunking.
-- Unit tests covering loaders, document identity, duplicate detection, chunking, and ingestion behavior.
+- Cached Sentence Transformers embedding model initialization.
+- Local BGE embedding generation with 384-dimensional normalized embeddings.
+- Persistent ChromaDB vector store initialization.
+- Chunk indexing using deterministic IDs.
+- Validation of missing and duplicate chunk IDs.
+- Duplicate-safe re-indexing through ChromaDB upserts.
+- ChromaDB persistence and reopening verification.
+- Unit and integration tests for ingestion, chunking, indexing, and vector storage.
 
-**Current test suite: 55 passing tests.**
+**Current test suite: 68 passing tests.**
 
-Persistent vector indexing, retrieval, generation, API development, evaluation, and deployment remain future stages.
+Stage 4 implementation is complete, pending final README review, Git commit, and push.
 
-The Stage 3 implementation is complete, pending its final Git commit and push.
+Retrieval engineering, RAG generation, API development, evaluation, and deployment remain future stages.
 
 ## Learning Focus
 
