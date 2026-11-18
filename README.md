@@ -48,6 +48,10 @@ User Query
        v
 Retrieval Module
        |
+       +--> Query Embedding
+       +--> Semantic Similarity Search
+       +--> Metadata Filtering
+       |
        v
 Retrieved Evidence
        |
@@ -60,7 +64,7 @@ Grounded Answer + Citations
 
 FastAPI will expose application functionality through an API.
 
-Retrieval and generation will remain independently testable to support systematic evaluation and optimization.
+Retrieval and generation remain independently testable to support systematic evaluation and optimization.
 
 ## Technology Stack
 
@@ -95,7 +99,7 @@ These are baseline values intended for experimentation, not universal optimal se
 | Embedding execution | Local CPU |
 | Vector storage | Persistent ChromaDB |
 
-These settings will be evaluated and optimized using a retrieval evaluation dataset.
+These settings can be evaluated and optimized using the retrieval evaluation dataset.
 
 ## Document Identity and Metadata
 
@@ -145,7 +149,7 @@ The document registry currently performs in-memory duplicate detection during in
 
 Persistent vector indexing is implemented separately through ChromaDB. Deterministic chunk IDs are used as vector database record IDs, allowing repeated indexing of the same chunks to update existing records instead of creating duplicates.
 
-The ingestion pipeline and vector indexing module remain separate at this stage. Their integration will be addressed in a later development stage.
+The ingestion pipeline and vector indexing module remain separate.
 
 ## Embeddings and Vector Indexing
 
@@ -182,63 +186,199 @@ Integration tests verify storage, re-indexing behavior, and persistence after re
 
 The vector database files are stored locally and excluded from Git.
 
+## Retrieval Engineering
+
+The retrieval module performs semantic similarity search over the persistent ChromaDB collection.
+
+### Semantic Retrieval
+
+The retrieval implementation:
+
+- Converts user queries into embeddings using the configured Sentence Transformers model.
+- Retrieves relevant document chunks using ChromaDB similarity search.
+- Supports configurable `top_k`, with the application retrieval setting used by default.
+- Preserves chunk content and source metadata in retrieved LangChain Documents.
+- Uses the production vector store without coupling retrieval to document ingestion.
+- Propagates vector database errors to the caller.
+
+### Metadata Filtering
+
+Retrieval supports filtering results using the following metadata fields:
+
+| Field | Purpose |
+|---|---|
+| `document_id` | Restrict retrieval to a specific source document |
+| `filename` | Restrict retrieval to a specific filename |
+| `page_number` | Restrict retrieval to a specific PDF page |
+
+Multiple supported filters can be combined using logical AND semantics.
+
+Unsupported filter fields and invalid filter values are rejected through input validation.
+
+### Retrieval Usage Example
+
+```python
+from app.retrieval.retriever import retrieve_documents
+
+results = retrieve_documents(
+    query="What is retrieval-augmented generation?",
+    top_k=4,
+    filters={"filename": "research_paper.pdf"},
+)
+
+for document in results:
+    print(document.page_content)
+    print(document.metadata)
+```
+
+The `top_k` parameter controls the maximum number of chunks returned. When omitted, the configured default retrieval value is used.
+
+## Retrieval Evaluation
+
+Retrieval quality is evaluated independently of LLM generation using a manually curated evaluation dataset.
+
+The initial dataset contains six synthetic document chunks and six evaluation queries with manually assigned relevant chunk IDs.
+
+The evaluation uses:
+
+- The actual configured BGE embedding model.
+- An isolated in-memory ChromaDB collection.
+- The retrieval evaluation metrics implemented in `app/retrieval/evaluation.py`.
+
+The evaluation process does not modify the production vector database.
+
+### Evaluation Metrics
+
+| Metric | Definition |
+|---|---|
+| Precision@K | Number of relevant retrieved chunks divided by K |
+| Recall@K | Number of relevant retrieved chunks divided by the total number of known relevant chunks |
+| Hit Rate@K | 1 if at least one relevant chunk is retrieved; otherwise 0 |
+
+Metrics are calculated independently for each query and then macro-averaged across all evaluation queries.
+
+### Running the Evaluation
+
+Run the evaluation using the default retrieval depth:
+
+```powershell
+python -m scripts.evaluate_retrieval
+```
+
+Specify a different retrieval depth:
+
+```powershell
+python -m scripts.evaluate_retrieval --top-k 2
+```
+
+The evaluation dataset is stored at:
+
+```text
+data/evaluation/retrieval_eval.json
+```
+
+The evaluation script validates the dataset before running retrieval. Validation includes:
+
+- Dataset structure and required fields.
+- Unique chunk and query IDs.
+- Non-empty document content and query text.
+- Valid metadata structures and scalar values.
+- Finite numeric metadata values.
+- Valid relevant chunk references.
+- Rejection of duplicate or unknown relevant chunk IDs.
+
+### Initial Retrieval Baseline
+
+The following results were obtained using the actual BGE embedding model and the six-query evaluation dataset.
+
+| Metric | K = 2 | K = 4 |
+|---|---:|---:|
+| Precision@K | 0.500 | 0.292 |
+| Recall@K | 0.750 | 0.833 |
+| Hit Rate@K | 1.000 | 1.000 |
+
+### Baseline Analysis
+
+The results illustrate the trade-off between retrieval precision and recall.
+
+- Increasing K from 2 to 4 improves recall from 0.750 to 0.833.
+- Precision decreases from 0.500 to 0.292 as more chunks are retrieved.
+- Both configurations achieve a hit rate of 1.000 on the current dataset.
+
+A smaller K returns fewer chunks and can reduce irrelevant context, while a larger K can improve evidence coverage at the cost of introducing additional context.
+
+**Evaluation limitation:** The current benchmark contains only six synthetic chunks and six manually curated queries. These results are an initial implementation baseline, not evidence of production retrieval quality. A larger and more representative evaluation dataset is required before drawing meaningful performance conclusions.
+
 ## Project Structure
 
 ```text
 research-knowledge-assistant/
-├── app/
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── embeddings.py
-│   │   └── vector_store.py
-│   │
-│   ├── ingestion/
-│   │   ├── chunker.py
-│   │   ├── document_identity.py
-│   │   ├── document_registry.py
-│   │   ├── indexer.py
-│   │   ├── loader.py
-│   │   ├── pdf_loader.py
-│   │   ├── pipeline.py
-│   │   └── txt_loader.py
-│   │
-│   ├── retrieval/     # Evidence retrieval
-│   ├── generation/    # Prompts and grounded generation
-│   ├── schemas/       # Pydantic models
-│   └── api/           # FastAPI application and routes
-│
-├── data/
-│   ├── raw/           # Local source research documents
-│   ├── documents/     # Processed document storage
-│   └── chroma_db/     # Persistent vector storage
-│
-├── tests/
-│   ├── unit/
-│   │   ├── test_chunker.py
-│   │   ├── test_document_identity.py
-│   │   ├── test_document_registry.py
-│   │   ├── test_indexer.py
-│   │   ├── test_ingestion_pipeline.py
-│   │   ├── test_loader.py
-│   │   ├── test_pdf_loader.py
-│   │   └── test_txt_loader.py
-│   │
-│   └── integration/
-│       └── test_vector_store.py
-│
-├── .env.example
-├── .gitignore
-├── README.md
-└── requirements.txt
+|
++-- app/
+|   |
+|   +-- core/
+|   |   +-- config.py
+|   |   +-- embeddings.py
+|   |   +-- vector_store.py
+|   |
+|   +-- ingestion/
+|   |   +-- chunker.py
+|   |   +-- document_identity.py
+|   |   +-- document_registry.py
+|   |   +-- indexer.py
+|   |   +-- loader.py
+|   |   +-- pdf_loader.py
+|   |   +-- pipeline.py
+|   |   +-- txt_loader.py
+|   |
+|   +-- retrieval/
+|       +-- __init__.py
+|       +-- retriever.py
+|       +-- evaluation.py
+|
++-- data/
+|   +-- raw/
+|   +-- documents/
+|   +-- chroma_db/
+|   +-- evaluation/
+|       +-- retrieval_eval.json
+|
++-- scripts/
+|   +-- evaluate_retrieval.py
+|
++-- tests/
+|   +-- unit/
+|   |   +-- test_chunker.py
+|   |   +-- test_document_identity.py
+|   |   +-- test_document_registry.py
+|   |   +-- test_indexer.py
+|   |   +-- test_ingestion_pipeline.py
+|   |   +-- test_loader.py
+|   |   +-- test_pdf_loader.py
+|   |   +-- test_txt_loader.py
+|   |   +-- test_retriever.py
+|   |   +-- test_retrieval_evaluation.py
+|   |   +-- test_evaluate_retrieval.py
+|   |
+|   +-- integration/
+|       +-- test_vector_store.py
+|       +-- test_retriever_integration.py
+|
++-- .env.example
++-- .gitignore
++-- README.md
++-- requirements.txt
 ```
 
 Raw research PDFs and generated vector database files are excluded from Git.
+
+Generation, schemas, and API modules will be added in their respective development stages.
 
 ## Setup
 
 ### 1. Clone the repository
 
-```bash
+```powershell
 git clone https://github.com/vaibhav3792/research-knowledge-assistant.git
 cd research-knowledge-assistant
 ```
@@ -272,6 +412,12 @@ Never commit `.env` or expose API keys publicly.
 python -m pytest -v
 ```
 
+### 6. Run retrieval evaluation
+
+```powershell
+python -m scripts.evaluate_retrieval
+```
+
 ## Configuration
 
 Application settings are centrally managed through Pydantic Settings in `app/core/config.py`.
@@ -297,8 +443,8 @@ Refer to `.env.example` for the complete configuration template.
 1. **Stage 1 — Foundations and Architecture:** Project setup, dependencies, configuration, architecture, and design decisions. Completed.
 2. **Stage 2 — Document Ingestion:** PDF and TXT loading, document hashing, duplicate detection, metadata handling, and ingestion pipeline. Completed.
 3. **Stage 3 — Document Processing and Chunking:** Recursive character splitting, metadata propagation, deterministic chunk identities, pipeline integration, and chunking tests. Completed.
-4. **Stage 4 — Embeddings and Vector Indexing:** Local embedding integration, persistent ChromaDB, deterministic chunk indexing, duplicate-safe upserts, and persistence tests. Implementation completed; final review and commit pending.
-5. **Stage 5 — Retrieval Engineering:** Similarity search, metadata filtering, source tracking, and retrieval evaluation.
+4. **Stage 4 — Embeddings and Vector Indexing:** Local embedding integration, persistent ChromaDB, deterministic chunk indexing, duplicate-safe upserts, and persistence tests. Completed.
+5. **Stage 5 — Retrieval Engineering:** Semantic similarity search, metadata filtering, source tracking, retrieval metrics, evaluation dataset, and robustness testing. Implementation and testing completed; final documentation and Git review in progress.
 6. **Stage 6 — RAG Generation:** Groq integration, prompt construction, context assembly, grounded answers, citations, and abstention.
 7. **Stage 7 — FastAPI Application:** Request and response schemas, endpoints, validation, error handling, and API tests.
 8. **Stage 8 — Evaluation and Optimization:** Retrieval metrics, answer quality, failure analysis, latency, and reliability improvements.
@@ -306,9 +452,9 @@ Refer to `.env.example` for the complete configuration template.
 
 ## Project Status
 
-**Current stage: Stage 4 — Embeddings and Vector Indexing**
+**Current stage: Stage 5 — Retrieval Engineering**
 
-Implemented:
+### Implemented
 
 - PDF loading with page-level extraction.
 - TXT loading with UTF-8 validation.
@@ -329,13 +475,22 @@ Implemented:
 - Validation of missing and duplicate chunk IDs.
 - Duplicate-safe re-indexing through ChromaDB upserts.
 - ChromaDB persistence and reopening verification.
-- Unit and integration tests for ingestion, chunking, indexing, and vector storage.
+- Semantic retrieval using ChromaDB similarity search.
+- Configurable retrieval depth.
+- Metadata filtering by document ID, filename, and page number.
+- Combined metadata filtering.
+- Retrieval input validation and error handling.
+- Precision@K, Recall@K, and Hit Rate@K implementation.
+- Evaluation dataset and dataset validation.
+- Retrieval evaluation using real BGE embeddings.
+- K=2 and K=4 baseline comparisons.
+- Unit and integration tests for ingestion, chunking, indexing, vector storage, retrieval, and evaluation.
 
-**Current test suite: 68 passing tests.**
+**Current test suite: 172 passing tests.**
 
-Stage 4 implementation is complete, pending final README review, Git commit, and push.
+Stage 5 implementation and testing are complete. Final documentation review, Git commit, and push remain.
 
-Retrieval engineering, RAG generation, API development, evaluation, and deployment remain future stages.
+RAG generation, API development, expanded evaluation, optimization, and deployment are the remaining stages.
 
 ## Learning Focus
 
@@ -344,6 +499,7 @@ This project emphasizes practical AI Engineering skills:
 - Understanding RAG mechanisms and design trade-offs.
 - Building modular and testable LLM applications.
 - Designing reliable document ingestion pipelines.
+- Implementing semantic retrieval and metadata filtering.
 - Evaluating retrieval and generation independently.
 - Experimenting with retrieval optimization.
 - Building evidence-grounded systems.

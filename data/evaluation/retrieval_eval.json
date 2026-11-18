@@ -1,0 +1,86 @@
+
+{
+  "description": "Small baseline benchmark for evaluating semantic retrieval in the Research & Knowledge Assistant.",
+  "chunks": [
+    {
+      "chunk_id": "rag-001",
+      "text": "Retrieval-Augmented Generation combines information retrieval with language generation. It retrieves relevant external documents and provides their content as context to a language model, helping produce grounded answers.",
+      "metadata": {
+        "document_id": "doc-rag",
+        "filename": "rag_fundamentals.txt"
+      }
+    },
+    {
+      "chunk_id": "rag-002",
+      "text": "A typical RAG pipeline consists of document ingestion, text chunking, embedding generation, vector storage, similarity-based retrieval, and answer generation using retrieved context.",
+      "metadata": {
+        "document_id": "doc-rag",
+        "filename": "rag_fundamentals.txt"
+      }
+    },
+    {
+      "chunk_id": "vector-001",
+      "text": "A vector database stores numerical vector representations of data. It supports similarity search by comparing query embeddings with stored embeddings to identify semantically similar content.",
+      "metadata": {
+        "document_id": "doc-vector",
+        "filename": "vector_databases.txt"
+      }
+    },
+    {
+      "chunk_id": "vector-002",
+      "text": "Metadata filtering restricts vector search results using attributes such as document identifiers, filenames, or page numbers. Combining metadata filters with semantic similarity search helps narrow retrieval to a relevant subset.",
+      "metadata": {
+        "document_id": "doc-vector",
+        "filename": "vector_databases.txt"
+      }
+    },
+    {
+      "chunk_id": "embedding-001",
+      "text": "Text embedding models convert text into dense numerical vectors. Semantically similar sentences should have vector representations that are close to each other in the embedding space.",
+      "metadata": {
+        "document_id": "doc-embedding",
+        "filename": "embedding_models.txt"
+      }
+    },
+    {
+      "chunk_id": "embedding-002",
+      "text": "Dense retrieval encodes queries and documents into vectors using an embedding model. The retriever compares these vectors using a similarity measure to find relevant document passages.",
+      "metadata": {
+        "document_id": "doc-embedding",
+        "filename": "embedding_models.txt"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "query_id": "q1",
+      "query": "How does retrieval augmented generation work?",
+      "relevant_chunk_ids": ["rag-001", "rag-002"]
+    },
+    {
+      "query_id": "q2",
+      "query": "What are the main stages in a RAG pipeline?",
+      "relevant_chunk_ids": ["rag-002", "rag-001"]
+    },
+    {
+      "query_id": "q3",
+      "query": "How do vector databases perform semantic similarity search?",
+      "relevant_chunk_ids": ["vector-001"]
+    },
+    {
+      "query_id": "q4",
+      "query": "How can metadata filters restrict document retrieval?",
+      "relevant_chunk_ids": ["vector-002"]
+    },
+    {
+      "query_id": "q5",
+      "query": "How do text embedding models represent semantic meaning?",
+      "relevant_chunk_ids": ["embedding-001"]
+    },
+    {
+      "query_id": "q6",
+      "query": "How does dense retrieval find relevant document passages?",
+      "relevant_chunk_ids": ["embedding-002", "embedding-001"]
+    }
+  ]
+}
