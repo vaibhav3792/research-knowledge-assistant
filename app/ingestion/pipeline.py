@@ -19,8 +19,9 @@ class IngestionResult:
 def ingest_document(
     file_path: str,
     registry: DocumentRegistry,
+    register: bool = True,
 ) -> IngestionResult:
-    """Load, chunk, and register a document while preventing duplicates."""
+    """Load and chunk a document, optionally registering its identity."""
 
     # Step 1: Generate stable document identity from the original file.
     document_id = compute_file_hash(file_path)
@@ -43,8 +44,9 @@ def ingest_document(
     # Step 5: Split page-level documents into retrieval-ready chunks.
     chunks = chunk_documents(page_documents)
 
-    # Step 6: Register only after loading and chunking succeed.
-    registry.register(document_id)
+    # Step 6: Register only when requested.
+    if register:
+        registry.register(document_id)
 
     # Step 7: Return the chunk-level documents.
     return IngestionResult(

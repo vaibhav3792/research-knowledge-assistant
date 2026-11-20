@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     chroma_dir: Path = PROJECT_ROOT / "data" / "chroma_db"
     chroma_collection: str = "research_documents"
 
+    # Document uploads
+    max_upload_size_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        gt=0,
+    )
+
     @model_validator(mode="after")
     def validate_chunking(self):
         if self.chunk_overlap >= self.chunk_size:

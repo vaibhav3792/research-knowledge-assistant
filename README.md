@@ -1,10 +1,11 @@
+
 # Research & Knowledge Assistant
 
 An AI-powered document intelligence system built using **LangChain, Retrieval-Augmented Generation (RAG), Sentence Transformers, and ChromaDB**.
 
 The application ingests research documents, processes them into metadata-rich chunks, indexes their embeddings, retrieves relevant evidence through semantic search, and generates answers grounded in the retrieved documents.
 
-The project emphasizes modular architecture, traceable source metadata, retrieval evaluation, grounded generation, and reliable testing.
+The project emphasizes modular architecture, traceable source metadata, retrieval evaluation, grounded generation, REST API integration, and reliable testing.
 
 ## Project Objectives
 
@@ -18,81 +19,90 @@ The project emphasizes modular architecture, traceable source metadata, retrieva
 - Provide structured source references.
 - Abstain when no relevant context is available.
 - Evaluate retrieval and generation independently.
-- Build and deploy a functional application through a REST API.
+- Expose document ingestion and question answering through a REST API.
+- Build a modular, testable, and extensible AI application.
 
 ## Architecture
 
-The system follows a modular architecture with separate ingestion, indexing, retrieval, and generation components.
+The system follows a modular architecture with separate ingestion, indexing, retrieval, generation, and API components.
 
 ```text
-                 Research Documents
-                         |
-                         v
-                 Ingestion Pipeline
-                         |
-          +--------------+--------------+
-          |              |              |
-          v              v              v
-       PDF/TXT      Document Hashing   Validation
-       Loading      & Identity
-          |
-          v
-       Text Splitting
-          |
-          v
-       Metadata Preservation
-          |
-          v
-       Document Chunks
-          |
-          v
-       Indexing Module
-          |
-          v
-       Embedding Model
-          |
-          v
-       Persistent ChromaDB
+                  Research Documents
+                          |
+                          v
+                   FastAPI Upload
+                          |
+                          v
+                  Ingestion Pipeline
+                          |
+           +--------------+--------------+
+           |              |              |
+           v              v              v
+        PDF/TXT      Document Hashing   Validation
+        Loading      & Identity
+           |
+           v
+        Text Splitting
+           |
+           v
+        Metadata Preservation
+           |
+           v
+        Document Chunks
+           |
+           v
+        Indexing Module
+           |
+           v
+        Embedding Model
+           |
+           v
+        Persistent ChromaDB
 
 
-                   User Query
-                       |
-                       v
-                Retrieval Module
-                       |
-              +--------+--------+
-              |        |        |
-              v        v        v
-           Query    Semantic  Metadata
-         Embedding  Search    Filtering
-              |
-              v
-        Retrieved Evidence
-              |
-              v
-        Context Formatting
-              |
-              v
-        Prompt Construction
-              |
-              v
-          Groq LLM
-              |
-              v
-        Grounded Answer
-              |
-              v
-       Structured Response
-       + Source References
+                    User Query
+                        |
+                        v
+                  FastAPI Query
+                        |
+                        v
+                 Retrieval Module
+                        |
+               +--------+--------+
+               |        |        |
+               v        v        v
+            Query    Semantic  Metadata
+          Embedding  Search    Filtering
+               |
+               v
+         Retrieved Evidence
+               |
+               v
+         Context Formatting
+               |
+               v
+         Prompt Construction
+               |
+               v
+             Groq LLM
+               |
+               v
+         Grounded Answer
+               |
+               v
+        Structured Response
+        + Source References
 ```
 
 The major architectural components are independently testable.
 
-- Ingestion handles document loading, identity, duplicate detection, and chunking.
-- Indexing handles embedding generation and persistent vector storage.
-- Retrieval handles semantic search and metadata filtering.
-- Generation handles context formatting, prompt construction, LLM invocation, and source references.
-- FastAPI will expose the functionality through an application interface in a subsequent stage.
+- **API:** Exposes document upload, retrieval, and grounded answer generation through REST endpoints.
+- **Ingestion:** Handles document loading, identity, duplicate detection, and chunking.
+- **Indexing:** Handles embedding generation and persistent vector storage.
+- **Retrieval:** Handles semantic search and metadata filtering.
+- **Generation:** Handles context formatting, prompt construction, LLM invocation, and source references.
+
+The API layer orchestrates the existing application modules without moving their underlying responsibilities into endpoint handlers.
 
 ## Technology Stack
 
@@ -110,10 +120,12 @@ The major architectural components are independently testable.
 | Vector database integration | `langchain-chroma` |
 | Document processing | pypdf |
 | Text splitting | LangChain RecursiveCharacterTextSplitter |
+| API framework | FastAPI |
+| API server | Uvicorn |
+| Request/response validation | Pydantic |
+| Multipart upload handling | python-multipart |
 | Configuration | Pydantic Settings |
-| Response validation | Pydantic |
-| Testing | pytest |
-| Planned API | FastAPI |
+| Testing | pytest, HTTPX, FastAPI TestClient |
 
 ## Initial RAG Configuration
 
@@ -134,6 +146,7 @@ These are baseline settings intended for experimentation, not universally optima
 | LLM provider | Groq |
 | LLM temperature | 0.0 |
 | LLM maximum tokens | 2,048 |
+| Maximum upload size | 10 MiB |
 
 These values can be evaluated and optimized as the project develops.
 
@@ -192,9 +205,11 @@ Each generated chunk preserves its original document metadata and adds:
 
 Chunk identities are generated using the document identity, source segment, chunk index, and chunk content.
 
-The ingestion pipeline registers a document only after loading and chunking complete successfully.
+The ingestion pipeline registers a document only after loading and chunking complete successfully when registration is enabled.
 
-The document registry currently performs in-memory duplicate detection during ingestion.
+The API upload workflow uses deferred registration: it registers the document only after successful vector indexing.
+
+The document registry currently performs in-memory duplicate detection. Its state does not persist across application restarts.
 
 ---
 
@@ -541,6 +556,182 @@ The implementation has been verified through the automated test suite. A success
 
 ---
 
+## REST API
+
+Stage 7 introduces a FastAPI application that exposes document ingestion, retrieval, and grounded answer generation through HTTP endpoints.
+
+The API layer connects the existing application modules without moving their underlying responsibilities into endpoint handlers.
+
+### API Architecture
+
+The API provides three main capabilities:
+
+- **Health check:** Checks whether the application process is running.
+- **Document upload:** Validates, stores, ingests, and indexes PDF or TXT documents.
+- **Question answering:** Retrieves relevant chunks and generates a grounded answer.
+
+### Available Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health` | Application health check |
+| POST | `/api/v1/documents/upload` | Upload and index a PDF or TXT document |
+| POST | `/api/v1/query` | Retrieve evidence and generate an answer |
+
+### Health Check
+
+Request:
+
+```http
+GET /health
+```
+
+Example response:
+
+```json
+{
+  "status": "healthy"
+}
+```
+
+This endpoint checks application liveness. It does not independently verify the availability of ChromaDB, the embedding model, or the Groq API.
+
+### Document Upload
+
+Request:
+
+```http
+POST /api/v1/documents/upload
+Content-Type: multipart/form-data
+```
+
+The endpoint accepts a file through the `file` form field.
+
+Supported formats:
+
+- PDF
+- TXT
+
+The upload implementation:
+
+1. Validates the filename and extension.
+2. Streams the uploaded content to disk.
+3. Enforces the configured maximum upload size.
+4. Computes a SHA-256 document identity.
+5. Checks the in-memory document registry for duplicates.
+6. Runs document ingestion and chunking.
+7. Indexes the resulting chunks in ChromaDB.
+8. Registers the document after successful indexing.
+
+The default maximum upload size is 10 MiB (10,485,760 bytes).
+
+Example successful response:
+
+```json
+{
+  "document_id": "document-sha256-hash",
+  "filename": "research_paper.pdf",
+  "chunk_count": 12,
+  "skipped": false,
+  "message": "Document uploaded and indexed successfully."
+}
+```
+
+The document ID and chunk count depend on the uploaded file.
+
+A duplicate upload returns a successful response with `skipped` set to `true` and an HTTP 200 status code.
+
+### Query
+
+Request:
+
+```http
+POST /api/v1/query
+Content-Type: application/json
+```
+
+Example request:
+
+```json
+{
+  "question": "What is retrieval-augmented generation?",
+  "top_k": 4,
+  "filters": {
+    "filename": "research_paper.pdf"
+  }
+}
+```
+
+The `top_k` and `filters` fields are optional.
+
+Supported metadata filters:
+
+- `document_id`
+- `filename`
+- `page_number`
+
+Multiple filters can be combined using AND semantics.
+
+Example response:
+
+```json
+{
+  "answer": "The retrieved research indicates that ...",
+  "sources": [
+    {
+      "chunk_id": "chunk-123",
+      "document_id": "document-456",
+      "filename": "research_paper.pdf",
+      "page_number": 3
+    }
+  ]
+}
+```
+
+The answer and source references are produced using the existing grounded generation module.
+
+### API Error Responses
+
+The API uses HTTP status codes to distinguish client errors from unexpected server failures.
+
+| Status | Meaning |
+|---|---|
+| 200 | Successful query or duplicate upload |
+| 201 | New document uploaded successfully |
+| 400 | Invalid request, unsupported document, or invalid ingestion input |
+| 413 | Uploaded file exceeds the configured size limit |
+| 422 | Request validation failure or no extractable document text |
+| 500 | Unexpected internal processing error |
+
+Unexpected internal errors are logged on the server, while generic error messages are returned to API clients to avoid exposing implementation details.
+
+### Interactive API Documentation
+
+FastAPI automatically generates interactive API documentation.
+
+After starting the application, visit:
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+
+These interfaces allow API endpoints to be explored and tested without writing a separate API client.
+
+### API Implementation Limitations
+
+The current implementation has several limitations that are important when considering production deployment:
+
+- Duplicate detection uses an in-memory registry. Its state does not survive application restarts.
+- The health endpoint is a liveness check, not a dependency readiness check.
+- Upload validation relies primarily on file extensions. File-signature and content-type validation can be strengthened.
+- The upload size limit is enforced while writing the uploaded file. A production deployment should also configure request-size limits at the server or reverse-proxy layer.
+- A failed indexing operation does not currently guarantee transactional rollback of potentially partially written ChromaDB records.
+- Concurrent duplicate uploads are not protected by a dedicated locking mechanism.
+- The current API does not implement authentication or authorization.
+
+These are recognized areas for future hardening rather than capabilities claimed by the current implementation.
+
+---
+
 ## Project Structure
 
 ```text
@@ -550,6 +741,7 @@ research-knowledge-assistant/
 |   |
 |   +-- api/
 |   |   +-- __init__.py
+|   |   +-- main.py
 |   |
 |   +-- core/
 |   |   +-- config.py
@@ -581,6 +773,8 @@ research-knowledge-assistant/
 |   +-- schemas/
 |       +-- __init__.py
 |       +-- answer.py
+|       +-- query.py
+|       +-- upload.py
 |
 +-- data/
 |   +-- raw/
@@ -595,6 +789,7 @@ research-knowledge-assistant/
 +-- tests/
 |   |
 |   +-- unit/
+|   |   +-- test_api.py
 |   |   +-- test_chunker.py
 |   |   +-- test_document_identity.py
 |   |   +-- test_document_registry.py
@@ -671,6 +866,26 @@ python -m pytest -v
 python -m scripts.evaluate_retrieval
 ```
 
+### 7. Start the API server
+
+```powershell
+python -m uvicorn app.api.main:app --reload
+```
+
+The application will be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+Open the interactive API documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+The `--reload` option is intended for development. It automatically restarts the server when application code changes.
+
 ---
 
 ## Configuration
@@ -700,6 +915,7 @@ The available configuration parameters include:
 | `DOCUMENTS_DIR` | `data/documents` |
 | `CHROMA_DIR` | `data/chroma_db` |
 | `CHROMA_COLLECTION` | `research_documents` |
+| `MAX_UPLOAD_SIZE_BYTES` | `10485760` |
 
 Refer to `.env.example` for the complete configuration template.
 
@@ -722,6 +938,11 @@ Unit tests validate individual components independently, including:
 - Retrieval.
 - Retrieval evaluation.
 - Context formatting and answer generation.
+- API request validation.
+- Document upload handling.
+- Upload size enforcement.
+- Duplicate upload handling.
+- API error handling.
 
 ### Integration Tests
 
@@ -732,11 +953,40 @@ Integration tests verify interactions between components, including:
 - Database reopening.
 - Semantic retrieval against the vector store.
 
+### API Tests
+
+The API is tested using FastAPI's `TestClient`.
+
+The tests cover:
+
+- Successful query requests.
+- Empty retrieval results.
+- Request validation failures.
+- Invalid retrieval filters.
+- Retrieval errors.
+- Generation errors.
+- Successful document uploads.
+- Duplicate uploads.
+- Unsupported file extensions.
+- Empty uploads.
+- Oversized uploads.
+- Ingestion failures.
+- Indexing failures.
+- Temporary and stored file cleanup.
+
+External LLM calls are mocked in unit tests so that the test suite remains deterministic and does not require live Groq API requests.
+
 ### Current Test Status
 
-**183 tests passed.**
+**200 tests passed.**
 
-The current test suite includes coverage for ingestion, chunking, indexing, retrieval, evaluation, and grounded answer generation.
+The current test suite covers ingestion, chunking, indexing, retrieval, evaluation, grounded answer generation, and API functionality.
+
+Run the full test suite:
+
+```powershell
+python -m pytest
+```
 
 ---
 
@@ -748,18 +998,22 @@ The current test suite includes coverage for ingestion, chunking, indexing, retr
 4. **Stage 4 — Embeddings and Vector Indexing:** Local embedding integration, persistent ChromaDB, deterministic chunk indexing, duplicate-safe upserts, and persistence tests. Completed.
 5. **Stage 5 — Retrieval Engineering:** Semantic similarity search, metadata filtering, source tracking, retrieval metrics, evaluation dataset, and robustness testing. Completed.
 6. **Stage 6 — LLM Integration and Grounded Answer Generation:** Groq integration, prompt construction, context assembly, grounded answers, structured source references, and no-context handling. Implementation and automated tests completed.
-7. **Stage 7 — FastAPI Application:** Request and response schemas, endpoints, validation, error handling, and API tests.
-8. **Stage 8 — Evaluation and Optimization:** Retrieval metrics, answer quality, failure analysis, latency, and reliability improvements.
+7. **Stage 7 — FastAPI Application:** FastAPI application, health endpoint, document upload, query endpoint, request/response schemas, validation, error handling, upload size limits, and API tests. Completed.
+8. **Stage 8 — Evaluation and Optimization:** Expand retrieval and generation evaluation, answer quality analysis, failure analysis, latency measurement, and reliability improvements.
 9. **Stage 9 — Deployment:** Production configuration, deployment, environment secrets, persistent storage, and live verification.
 
 ---
 
 ## Project Status
 
-**Current stage: Stage 6 — LLM Integration and Grounded Answer Generation**
+**Current stage: Stage 7 — FastAPI Application**
 
 ### Implemented
 
+#### Foundations and Ingestion
+
+- Python project structure and modular architecture.
+- Centralized application configuration using Pydantic Settings.
 - PDF loading with page-level extraction.
 - TXT loading with UTF-8 validation.
 - File-type-based document loader.
@@ -771,7 +1025,10 @@ The current test suite includes coverage for ingestion, chunking, indexing, retr
 - Chunk metadata propagation, including start index tracking.
 - Deterministic SHA-256 chunk identities.
 - Integration of chunking into the ingestion pipeline.
-- Registration only after successful loading and chunking.
+- Registration after successful loading and chunking when enabled.
+
+#### Embeddings, Indexing, and Retrieval
+
 - Cached Sentence Transformers embedding model initialization.
 - Local BGE embedding generation with 384-dimensional normalized embeddings.
 - Persistent ChromaDB vector store initialization.
@@ -788,6 +1045,9 @@ The current test suite includes coverage for ingestion, chunking, indexing, retr
 - Evaluation dataset and dataset validation.
 - Retrieval evaluation using real BGE embeddings.
 - K=2 and K=4 baseline comparisons.
+
+#### LLM Integration and Generation
+
 - Cached Groq LLM initialization.
 - Secure API key configuration using Pydantic SecretStr.
 - RAG prompt construction using LangChain ChatPromptTemplate.
@@ -799,19 +1059,42 @@ The current test suite includes coverage for ingestion, chunking, indexing, retr
 - No-context handling without unnecessary LLM invocation.
 - Validation of generated LLM responses.
 - Mock-based generation unit tests.
-- Unit and integration testing across implemented components.
 
-**Current test suite: 183 passing tests.**
+#### REST API
+
+- FastAPI application entrypoint.
+- Health check endpoint.
+- Versioned REST API endpoints.
+- Query request validation using Pydantic.
+- Document upload endpoint supporting PDF and TXT.
+- Streaming upload size enforcement.
+- Temporary upload file handling and cleanup.
+- Document hashing and duplicate upload handling.
+- Integration of upload, ingestion, and vector indexing.
+- Integration of retrieval and grounded generation through the query API.
+- Safe HTTP error responses and server-side exception logging.
+- API unit tests using FastAPI TestClient.
+
+#### Testing
+
+- Unit testing across implemented components.
+- Integration testing for vector storage and retrieval.
+- API request and response testing.
+- Upload validation and error handling tests.
+
+**Current test suite: 200 passing tests.**
 
 ### Remaining Work
 
-- Build FastAPI endpoints and connect ingestion, retrieval, and generation into an application workflow.
-- Add API-level validation and error handling.
 - Expand retrieval and generation evaluation datasets.
 - Improve answer quality and citation accuracy.
 - Experiment with retrieval optimization and reranking.
 - Measure latency, reliability, and other performance characteristics.
-- Prepare the application for deployment.
+- Strengthen upload security and operational error recovery.
+- Add persistent document registry support.
+- Add API authentication and authorization.
+- Prepare production configuration and deployment.
+- Verify the complete application with live external services.
 
 ---
 
@@ -830,6 +1113,9 @@ This project emphasizes practical AI Engineering skills:
 - Handling untrusted retrieved context.
 - Managing LLM configuration and API secrets.
 - Building structured outputs with Pydantic.
+- Building REST APIs with FastAPI.
+- Understanding multipart file uploads and validation.
+- Handling API errors and application logging.
 - Testing LLM applications without depending on live API calls.
 - Improving answer quality, citation accuracy, and system reliability.
 - Deploying a functional AI application.

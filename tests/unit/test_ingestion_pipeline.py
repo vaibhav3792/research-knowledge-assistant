@@ -151,3 +151,19 @@ def test_failed_chunking_does_not_register_document(
     document_id = compute_file_hash(file_path)
 
     assert registry.is_registered(document_id) is False
+
+def test_document_can_be_ingested_without_registration(tmp_path):
+    file_path = tmp_path / "research.txt"
+    file_path.write_text("Research content", encoding="utf-8")
+
+    registry = DocumentRegistry()
+
+    result = ingest_document(
+        file_path,
+        registry,
+        register=False,
+    )
+
+    assert result.skipped is False
+    assert len(result.documents) == 1
+    assert registry.is_registered(result.document_id) is False
